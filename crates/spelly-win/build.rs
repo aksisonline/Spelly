@@ -1,9 +1,9 @@
-// Embeds the cat icon into spelly.exe. Only does anything when building on Windows.
+// Embeds the kitten icon (resource id 1) into spelly.exe. Works on Windows (rc.exe) and when
+// cross-compiling from macOS/Linux (llvm-rc).
 fn main() {
-    #[cfg(windows)]
-    {
-        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-            let _ = winresource::WindowsResource::new().set_icon("../../assets/icon.ico").compile();
-        }
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let _ = embed_resource::compile("spelly.rc", embed_resource::NONE);
     }
+    println!("cargo:rerun-if-changed=spelly.rc");
+    println!("cargo:rerun-if-changed=../../assets/icon.ico");
 }

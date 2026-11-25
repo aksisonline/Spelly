@@ -12,7 +12,7 @@ done
 bin() { for t in $ARCHS; do echo "target/$t/release/$1"; done; }
 
 APP=dist/Spelly.app
-rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+rm -rf dist/Spelly.app dist/Spelly-macOS.dmg && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Spelly = the background app (keyboard + menu bar). spelly-ui = the window it opens.
 lipo -create -output "$APP/Contents/MacOS/Spelly" $(bin spelly-mac)
 

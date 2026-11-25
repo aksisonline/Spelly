@@ -4,6 +4,10 @@
   #define AppVersion "0.0.0"
 #endif
 
+#ifndef BinDir
+  #define BinDir "..\..\target\release"
+#endif
+
 [Setup]
 AppId={{6E1F2B52-5D0A-4C6B-9B1E-3C5C8E7A1D42}
 AppName=Spelly
@@ -30,8 +34,8 @@ CloseApplications=yes
 Name: "autostart"; Description: "Start Spelly when I sign in to Windows"; GroupDescription: "Options:"
 
 [Files]
-Source: "..\..\target\release\spelly.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\target\release\spelly-ui.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BinDir}\spelly.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BinDir}\spelly-ui.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; Starts Spelly if needed and shows the window; if it is already in the tray, just shows the window.

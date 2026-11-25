@@ -19,7 +19,7 @@ jobs:
         shell: pwsh
         run: |
           $v = (Select-String -Path crates/spelly-win/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-          iscc "/DAppVersion=$v" packaging\windows\spelly.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" packaging\windows\spelly.iss
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: dist/Spelly-Setup.exe }
 

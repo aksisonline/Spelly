@@ -12,6 +12,13 @@ Forced autocorrect for Windows and macOS. Backspace puts back what you wrote.
 
 <br />
 
+<a href="https://github.com/aksisonline/Spelly/releases/latest/download/Spelly-macOS.dmg"><img src="https://shieldcn.dev/badge/Download-macOS-F0508F.svg?logo=apple&size=lg" alt="Download for macOS" /></a>
+&nbsp;&nbsp;
+<a href="https://github.com/aksisonline/Spelly/releases/latest/download/Spelly-Setup.exe"><img src="https://shieldcn.dev/badge/Download-Windows-F0508F.svg?logo=windows&size=lg" alt="Download for Windows" /></a>
+
+<br />
+<br />
+
 <img src="docs/screenshots/home.png" width="330" alt="Home" />
 &nbsp;
 <img src="docs/screenshots/recent.png" width="330" alt="Recent fixes" />
@@ -41,8 +48,8 @@ The window follows your system's light / dark setting.
 
 | | |
 | :--- | :--- |
-| **Windows** | Run `Spelly-Setup.exe`. No admin needed. Tick "Start Spelly when I sign in" if you want it always on. |
-| **macOS** | Open `Spelly-macOS.dmg`, drag Spelly to Applications, launch it, and allow it under **System Settings → Privacy & Security → Accessibility**. |
+| **Windows** | Download [`Spelly-Setup.exe`](https://github.com/aksisonline/Spelly/releases/latest/download/Spelly-Setup.exe) and run it. No admin needed. Tick "Start Spelly when I sign in" if you want it always on. |
+| **macOS** | Download [`Spelly-macOS.dmg`](https://github.com/aksisonline/Spelly/releases/latest/download/Spelly-macOS.dmg), open it, drag Spelly to Applications, launch it, and allow it under **System Settings → Privacy & Security → Accessibility**. |
 
 > [!NOTE]
 > Builds are unsigned. If macOS says Spelly is damaged, run `xattr -cr /Applications/Spelly.app`. On Windows, SmartScreen may ask once: **More info → Run anyway**.
