@@ -34,12 +34,12 @@ Source: "..\..\target\release\spelly.exe"; DestDir: "{app}"; Flags: ignoreversio
 Source: "..\..\target\release\spelly-ui.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; The Start Menu entry opens the window; the background app lives in the tray.
-Name: "{group}\Spelly"; Filename: "{app}\spelly-ui.exe"
+; Starts Spelly if needed and shows the window; if it is already in the tray, just shows the window.
+Name: "{group}\Spelly"; Filename: "{app}\spelly.exe"
 Name: "{group}\Uninstall Spelly"; Filename: "{uninstallexe}"
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Spelly"; ValueData: """{app}\spelly.exe"""; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Spelly"; ValueData: """{app}\spelly.exe"" --background"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 Filename: "{app}\spelly.exe"; Description: "Start Spelly now"; Flags: nowait postinstall skipifsilent

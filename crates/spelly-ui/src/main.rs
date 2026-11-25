@@ -44,6 +44,13 @@ fn main() {
             }),
             ..Default::default()
         };
+        // Closing the window only closes the window program. Spelly itself keeps running.
+        cx.on_window_closed(|cx, _| {
+            if cx.windows().is_empty() {
+                cx.quit();
+            }
+        })
+        .detach();
         cx.open_window(opts, |window, cx| cx.new(|cx| app::SpellyApp::new(window, cx))).unwrap();
         cx.activate(true);
     });

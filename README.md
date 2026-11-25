@@ -28,7 +28,7 @@ Forced autocorrect for Windows and macOS. Backspace puts back what you wrote.
 
 Finish a word and Spelly fixes it on the spot: spelling, spaces, punctuation, capitals, and the words that sound alike (*their / they're*, *then / than*). No suggestion popups. If it was right the first time, press **Backspace** and your original comes back, and Spelly leaves that word alone from then on, like a phone keyboard. Anything it isn't sure about gets a highlight instead of an edit.
 
-It lives in the tray (Windows) or menu bar (macOS). **Open Spelly** shows the window:
+Spelly runs in the background, in the tray (Windows) or menu bar (macOS), and keeps running when you close its window. Only **Quit** in the tray menu stops it. Opening Spelly from the Start Menu, Dock or Launchpad shows the window (starting Spelly first if needed), and signing in starts it silently with no window. **Open Spelly** in the tray menu shows the window:
 
 - **Home**: on / pause, and what it fixed today.
 - **Recent fixes**: tap *That was right* on anything it got wrong and it never does it again.
@@ -82,7 +82,7 @@ Starter packs: [`anime.txt`](dictionaries/anime.txt), [`indian-names.txt`](dicti
 | `harper/` | Our Harper fork: dictionary, grammar rules, context ranking |
 | `packaging/` | Windows installer, macOS bundle, icon and mascot scripts |
 
-The background app and the window are separate programs that only talk through the files above, so the always-on part stays small.
+The background app and the window are separate programs that only talk through the files above, so the always-on part stays small and the window can come and go.
 
 ## Known limits
 

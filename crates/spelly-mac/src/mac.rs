@@ -99,6 +99,8 @@ pub fn run() {
     let mut tray = None;
     let mut tap: Option<CGEventTap<'static>> = None;
     let mut asked = false;
+    // Signing in starts us with --background: tray only, no window.
+    let background = std::env::args().any(|a| a == "--background");
 
     event_loop.run(move |event, _, flow| {
         *flow = ControlFlow::Wait;
@@ -112,7 +114,12 @@ pub fn run() {
                     .with_tooltip("Spelly")
                     .build()
                     .ok();
+                if !background {
+                    open_window();
+                }
             }
+            // Clicking Spelly in the Dock / Launchpad / Finder while it runs: show the window.
+            Event::Reopen { .. } => open_window(),
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 // Once a second: pick up edits made in the window or by hand.
                 RUNTIME.with(|r| {

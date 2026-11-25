@@ -64,13 +64,21 @@ fn open_window() {
 pub fn run() {
     // One copy only: two hooks would both "fix" every word. The installer watches this name too.
     let _single = unsafe { CreateMutexW(None, false, w!("Local\\SpellyRunning")) };
+    let background = std::env::args().any(|a| a == "--background");
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        // Already running in the tray: launching Spelly again just shows the window.
+        if !background {
+            open_window();
+        }
         return;
     }
     RUNTIME.with(|r| *r.borrow_mut() = Some(Runtime::new(Store::open_default())));
     unsafe {
         let hinst = GetModuleHandleW(None).unwrap_or_default();
         let hwnd = create_tray_window(hinst.into());
+        if !background {
+            open_window(); // signing in passes --background: tray only
+        }
         let _kb = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), Some(hinst.into()), 0);
         let _ms = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), Some(hinst.into()), 0);
 
