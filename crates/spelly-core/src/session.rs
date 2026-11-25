@@ -7,11 +7,12 @@ pub struct Session {
     last: Vec<Correction>,
     /// (original, replacement), lowercase. Reverted pairs are never re-applied.
     rejected: HashSet<(String, String)>,
+    fresh: Vec<(String, String)>,
 }
 
 impl Session {
     pub fn new() -> Self {
-        Self { last: vec![], rejected: HashSet::new() }
+        Self { last: vec![], rejected: HashSet::new(), fresh: vec![] }
     }
 
     /// Word boundary typed. Returns corrections for the host to apply (see [`Spelly::apply`]).
@@ -38,6 +39,7 @@ impl Session {
         let mut out = vec![];
         for f in fixes {
             self.rejected.insert(key(&f.original, &f.replacement));
+            self.fresh.push((f.original.clone(), f.replacement.clone()));
             let start = (f.span.start as isize + shift) as usize;
             let new_len = f.replacement.chars().count();
             shift += new_len as isize - (f.span.end - f.span.start) as isize;
@@ -54,6 +56,11 @@ impl Session {
     /// Any other keystroke closes the undo window.
     pub fn on_other_input(&mut self) {
         self.last.clear();
+    }
+
+    /// Pairs the user reverted since the last call (so the shell can persist them).
+    pub fn take_new_rejections(&mut self) -> Vec<(String, String)> {
+        std::mem::take(&mut self.fresh)
     }
 
     pub fn reject(&mut self, original: &str, replacement: &str) {

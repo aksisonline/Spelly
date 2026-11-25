@@ -2,7 +2,6 @@
 //! All decisions live in `spelly_core::Typist`; this file only talks to macOS.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use core_foundation::base::TCFType;
@@ -16,8 +15,7 @@ use core_graphics::event::{
     CGEventTapPlacement, CGEventType, CallbackResult, EventField,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use harper_core::Dialect;
-use spelly_core::{Edit, Key, Outcome, Pack, Spelly, Typist};
+use spelly_core::{Edit, Key, Outcome, Runtime, Store};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
@@ -28,7 +26,8 @@ use tray_icon::{Icon, TrayIconBuilder};
 const MARK: i64 = 0x5350_454C; // "SPEL"
 
 thread_local! {
-    static TYPIST: RefCell<Option<Typist>> = const { RefCell::new(None) };
+    static RUNTIME: RefCell<Option<Runtime>> = const { RefCell::new(None) };
+    static APP: RefCell<(Instant, String)> = RefCell::new((Instant::now() - Duration::from_secs(10), String::new()));
     static PORT: RefCell<Option<CFMachPort>> = const { RefCell::new(None) };
 }
 
@@ -50,16 +49,32 @@ enum UserEvent {
     Menu(tray_icon::menu::MenuId),
 }
 
-/// `~/Library/Application Support/Spelly/dictionaries`
-fn dict_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default()
-        .join("Library/Application Support/Spelly/dictionaries")
+/// Name of the focused app, cached for a moment (asking the OS on every key is wasteful).
+fn frontmost_app() -> String {
+    APP.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.0.elapsed() > Duration::from_millis(400) {
+            use objc2_app_kit::NSWorkspace;
+            let name = NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .and_then(|a| a.localizedName())
+                .map(|n| n.to_string());
+            *c = (Instant::now(), name.unwrap_or_default());
+        }
+        c.1.clone()
+    })
 }
 
-fn build() -> Spelly {
-    Spelly::new(&Pack::load_dir(&dict_dir()), Dialect::Indian)
+/// Open the window. In the shipped app that is the helper app inside our bundle (macOS keeps
+/// it to one instance and just raises it); in development it is `spelly-ui` next to this binary.
+fn open_window() {
+    let Some(exe) = std::env::current_exe().ok() else { return };
+    let helper = exe.parent().and_then(|d| d.parent()).map(|c| c.join("Helpers/Spelly Window.app"));
+    if let Some(app) = helper.filter(|p| p.exists()) {
+        let _ = std::process::Command::new("open").arg(app).spawn();
+    } else if let Some(ui) = exe.parent().map(|d| d.join("spelly-ui")).filter(|p| p.exists()) {
+        let _ = std::process::Command::new(ui).spawn();
+    }
 }
 
 fn trusted(prompt: bool) -> bool {
@@ -69,7 +84,7 @@ fn trusted(prompt: bool) -> bool {
 }
 
 pub fn run() {
-    TYPIST.with(|t| *t.borrow_mut() = Some(Typist::new(build())));
+    RUNTIME.with(|r| *r.borrow_mut() = Some(Runtime::new(Store::open_default())));
     let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     event_loop.set_activation_policy(ActivationPolicy::Accessory); // menu bar only, no Dock icon
     let proxy = event_loop.create_proxy();
@@ -77,9 +92,9 @@ pub fn run() {
         let _ = proxy.send_event(UserEvent::Menu(e.id));
     }));
 
+    let open = MenuItem::new("Open Spelly", true, None);
     let pause = CheckMenuItem::new("Pause", true, false, None);
     let folder = MenuItem::new("Open dictionaries folder", true, None);
-    let reload = MenuItem::new("Reload dictionaries", true, None);
     let quit = MenuItem::new("Quit Spelly", true, None);
     let mut tray = None;
     let mut tap: Option<CGEventTap<'static>> = None;
@@ -90,7 +105,7 @@ pub fn run() {
         match event {
             Event::NewEvents(StartCause::Init) => {
                 let menu = Menu::new();
-                let _ = menu.append_items(&[&pause, &folder, &reload, &PredefinedMenuItem::separator(), &quit]);
+                let _ = menu.append_items(&[&open, &PredefinedMenuItem::separator(), &pause, &folder, &PredefinedMenuItem::separator(), &quit]);
                 tray = TrayIconBuilder::new()
                     .with_menu(Box::new(menu))
                     .with_icon(cat_icon())
@@ -98,23 +113,30 @@ pub fn run() {
                     .build()
                     .ok();
             }
-            Event::UserEvent(UserEvent::Menu(id)) => {
-                if id == *pause.id() {
-                    TYPIST.with(|t| {
-                        if let Some(t) = t.borrow_mut().as_mut() {
-                            t.paused = pause.is_checked();
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                // Once a second: pick up edits made in the window or by hand.
+                RUNTIME.with(|r| {
+                    if let Some(rt) = r.borrow_mut().as_mut() {
+                        if rt.tick() {
+                            pause.set_checked(rt.settings().paused);
                         }
-                    });
-                } else if id == *reload.id() {
-                    let fresh = build();
-                    TYPIST.with(|t| {
-                        if let Some(t) = t.borrow_mut().as_mut() {
-                            t.reload(fresh);
+                    }
+                });
+            }
+            Event::UserEvent(UserEvent::Menu(id)) => {
+                if id == *open.id() {
+                    open_window();
+                } else if id == *pause.id() {
+                    let on = pause.is_checked();
+                    RUNTIME.with(|r| {
+                        if let Some(rt) = r.borrow_mut().as_mut() {
+                            rt.set_paused(on);
                         }
                     });
                 } else if id == *folder.id() {
-                    Pack::seed_dir(&dict_dir());
-                    let _ = std::process::Command::new("open").arg(dict_dir()).spawn();
+                    let dir = Store::open_default().packs_dir();
+                    spelly_core::Pack::seed_dir(&dir);
+                    let _ = std::process::Command::new("open").arg(dir).spawn();
                 } else if id == *quit.id() {
                     drop(tray.take());
                     *flow = ControlFlow::Exit;
@@ -128,9 +150,9 @@ pub fn run() {
                 tap = install_tap();
             }
             asked = true;
-            if tap.is_none() {
-                *flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_secs(2));
-            }
+        }
+        if *flow != ControlFlow::Exit {
+            *flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_secs(1));
         }
     });
 }
@@ -190,8 +212,9 @@ fn on_event(ty: CGEventType, ev: &CGEvent) -> CallbackResult {
 }
 
 fn feed(key: Key) -> Outcome {
-    TYPIST.with(|t| match t.borrow_mut().as_mut() {
-        Some(t) => t.on_key(key),
+    let app = if matches!(key, Key::Reset) { String::new() } else { frontmost_app() };
+    RUNTIME.with(|r| match r.borrow_mut().as_mut() {
+        Some(rt) => rt.on_key(key, &app),
         None => Outcome::Pass,
     })
 }
@@ -276,42 +299,10 @@ fn inject(edit: &Edit) {
 
 // ---------------------------------------------------------------- icon
 
-/// A small pink cat face, drawn in code so there is no asset to lose.
+/// The kitten, pre-rendered by packaging/make_icon.py (8-byte w,h header + RGBA).
 fn cat_icon() -> Icon {
-    const N: i32 = 44;
-    let (pink, dark) = ([244u8, 114, 182, 255], [131u8, 24, 67, 255]);
-    let mut px = vec![0u8; (N * N * 4) as usize];
-    let mut put = |x: i32, y: i32, c: [u8; 4]| {
-        if (0..N).contains(&x) && (0..N).contains(&y) {
-            let i = ((y * N + x) * 4) as usize;
-            px[i..i + 4].copy_from_slice(&c);
-        }
-    };
-    let inside_tri = |x: f32, y: f32, a: (f32, f32), b: (f32, f32), c: (f32, f32)| {
-        let s = |p: (f32, f32), q: (f32, f32), r: (f32, f32)| (p.0 - r.0) * (q.1 - r.1) - (q.0 - r.0) * (p.1 - r.1);
-        let (d1, d2, d3) = (s((x, y), a, b), s((x, y), b, c), s((x, y), c, a));
-        !((d1 < 0.0 || d2 < 0.0 || d3 < 0.0) && (d1 > 0.0 || d2 > 0.0 || d3 > 0.0))
-    };
-    for y in 0..N {
-        for x in 0..N {
-            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            let face = ((fx - 22.0) / 17.0).powi(2) + ((fy - 25.0) / 14.0).powi(2) <= 1.0;
-            let ears = inside_tri(fx, fy, (6.0, 22.0), (7.0, 4.0), (21.0, 13.0))
-                || inside_tri(fx, fy, (38.0, 22.0), (37.0, 4.0), (23.0, 13.0));
-            if face || ears {
-                put(x, y, pink);
-            }
-        }
-    }
-    for (ex, ey) in [(16, 23), (28, 23)] {
-        for dy in -2..=2 {
-            for dx in -1..=1 {
-                put(ex + dx, ey + dy, dark);
-            }
-        }
-    }
-    for dx in -1..=1 {
-        put(22 + dx, 29, dark);
-    }
-    Icon::from_rgba(px, N as u32, N as u32).expect("icon")
+    const RAW: &[u8] = include_bytes!("../../../assets/tray.rgba");
+    let w = u32::from_le_bytes(RAW[0..4].try_into().unwrap());
+    let h = u32::from_le_bytes(RAW[4..8].try_into().unwrap());
+    Icon::from_rgba(RAW[8..].to_vec(), w, h).expect("tray icon")
 }

@@ -11,7 +11,6 @@ path = "src/main.rs"
 
 [dependencies]
 spelly-core = { path = "../spelly-core" }
-harper-core = { path = "../../harper/harper-core" }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"

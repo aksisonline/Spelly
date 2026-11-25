@@ -2,15 +2,14 @@
 //! All decisions live in `spelly_core::Typist`; this file only talks to Windows.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
-
-use harper_core::Dialect;
-use spelly_core::{Edit, Key, Outcome, Pack, Spelly, Typist};
+use spelly_core::{Edit, Key, Outcome, Pack, Runtime, Store};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::System::Threading::{
+    CreateMutexW, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -20,26 +19,46 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 const MARK: usize = 0x5350_454C; // "SPEL"
 const WM_TRAY: u32 = WM_APP + 1;
 const ID_PAUSE: usize = 1;
-const ID_RELOAD: usize = 2;
+const ID_OPEN: usize = 5;
 const ID_QUIT: usize = 3;
 const ID_FOLDER: usize = 4;
 
 thread_local! {
-    static TYPIST: RefCell<Option<Typist>> = const { RefCell::new(None) };
+    static RUNTIME: RefCell<Option<Runtime>> = const { RefCell::new(None) };
+    static APP: RefCell<(isize, String)> = const { RefCell::new((0, String::new())) };
     static LAST_FG: RefCell<isize> = const { RefCell::new(0) };
 }
 
-/// `%APPDATA%\Spelly\dictionaries`: always writable, survives updates.
-fn dict_dir() -> PathBuf {
-    std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_default()
-        .join("Spelly")
-        .join("dictionaries")
+/// File name of the process that owns `hwnd`, e.g. `Code.exe`. Cached per window.
+fn app_name(hwnd: HWND) -> String {
+    let key = hwnd.0 as isize;
+    if let Some(hit) = APP.with(|c| (c.borrow().0 == key).then(|| c.borrow().1.clone())) {
+        return hit;
+    }
+    let mut name = String::new();
+    unsafe {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            let mut buf = [0u16; 520];
+            let mut len = buf.len() as u32;
+            if QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut len).is_ok() {
+                let full = String::from_utf16_lossy(&buf[..len as usize]);
+                name = full.rsplit(['\\', '/']).next().unwrap_or("").to_string();
+            }
+            let _ = windows::Win32::Foundation::CloseHandle(h);
+        }
+    }
+    APP.with(|c| *c.borrow_mut() = (key, name.clone()));
+    name
 }
 
-fn build() -> Spelly {
-    Spelly::new(&Pack::load_dir(&dict_dir()), Dialect::Indian)
+/// `spelly-ui.exe`, installed next to us.
+fn open_window() {
+    let ui = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("spelly-ui.exe")));
+    if let Some(ui) = ui.filter(|p| p.exists()) {
+        let _ = std::process::Command::new(ui).spawn();
+    }
 }
 
 pub fn run() {
@@ -48,7 +67,7 @@ pub fn run() {
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
         return;
     }
-    TYPIST.with(|t| *t.borrow_mut() = Some(Typist::new(build())));
+    RUNTIME.with(|r| *r.borrow_mut() = Some(Runtime::new(Store::open_default())));
     unsafe {
         let hinst = GetModuleHandleW(None).unwrap_or_default();
         let hwnd = create_tray_window(hinst.into());
@@ -87,8 +106,9 @@ unsafe extern "system" fn mouse_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
 }
 
 fn feed(key: Key) -> Outcome {
-    TYPIST.with(|t| match t.borrow_mut().as_mut() {
-        Some(t) => t.on_key(key),
+    let app = if matches!(key, Key::Reset) { String::new() } else { app_name(unsafe { GetForegroundWindow() }) };
+    RUNTIME.with(|r| match r.borrow_mut().as_mut() {
+        Some(rt) => rt.on_key(key, &app),
         None => Outcome::Pass,
     })
 }
@@ -263,6 +283,7 @@ unsafe fn create_tray_window(hinst: windows::Win32::Foundation::HINSTANCE) -> HW
         nid.szTip[i] = u;
     }
     unsafe { let _ = Shell_NotifyIconW(NIM_ADD, &nid); }
+    unsafe { SetTimer(Some(hwnd), 1, 1000, None) }; // once a second: pick up edits from the window
     hwnd
 }
 
@@ -280,24 +301,27 @@ unsafe extern "system" fn tray_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             unsafe { show_menu(hwnd) };
             LRESULT(0)
         }
+        WM_TIMER => {
+            RUNTIME.with(|r| {
+                if let Some(rt) = r.borrow_mut().as_mut() {
+                    rt.tick();
+                }
+            });
+            LRESULT(0)
+        }
         WM_COMMAND => {
             match wp.0 & 0xFFFF {
-                ID_PAUSE => TYPIST.with(|t| {
-                    if let Some(t) = t.borrow_mut().as_mut() {
-                        t.paused = !t.paused;
+                ID_OPEN => open_window(),
+                ID_PAUSE => RUNTIME.with(|r| {
+                    if let Some(rt) = r.borrow_mut().as_mut() {
+                        let now = !rt.settings().paused;
+                        rt.set_paused(now);
                     }
                 }),
-                ID_RELOAD => {
-                    let fresh = build();
-                    TYPIST.with(|t| {
-                        if let Some(t) = t.borrow_mut().as_mut() {
-                            t.reload(fresh);
-                        }
-                    });
-                }
                 ID_FOLDER => {
-                    Pack::seed_dir(&dict_dir());
-                    let _ = std::process::Command::new("explorer").arg(dict_dir()).spawn();
+                    let dir = Store::open_default().packs_dir();
+                    Pack::seed_dir(&dir);
+                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
                 }
                 ID_QUIT => unsafe { PostQuitMessage(0) },
                 _ => {}
@@ -309,13 +333,14 @@ unsafe extern "system" fn tray_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
 }
 
 unsafe fn show_menu(hwnd: HWND) {
-    let paused = TYPIST.with(|t| t.borrow().as_ref().is_some_and(|t| t.paused));
+    let paused = RUNTIME.with(|r| r.borrow().as_ref().is_some_and(|r| r.settings().paused));
     let Ok(menu) = (unsafe { CreatePopupMenu() }) else { return };
     let pause_flags = if paused { MF_STRING | MF_CHECKED } else { MF_STRING };
     unsafe {
+        let _ = AppendMenuW(menu, MF_STRING, ID_OPEN, w!("Open Spelly"));
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, pause_flags, ID_PAUSE, w!("Pause"));
         let _ = AppendMenuW(menu, MF_STRING, ID_FOLDER, w!("Open dictionaries folder"));
-        let _ = AppendMenuW(menu, MF_STRING, ID_RELOAD, w!("Reload dictionaries"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, w!("Quit"));
         let mut pt = POINT::default();

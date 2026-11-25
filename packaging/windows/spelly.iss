@@ -18,7 +18,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\dist
 OutputBaseFilename=Spelly-Setup
 SetupIconFile=..\..\assets\icon.ico
-UninstallDisplayIcon={app}\spelly.exe
+UninstallDisplayIcon={app}\spelly-ui.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -31,9 +31,11 @@ Name: "autostart"; Description: "Start Spelly when I sign in to Windows"; GroupD
 
 [Files]
 Source: "..\..\target\release\spelly.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\target\release\spelly-ui.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Spelly"; Filename: "{app}\spelly.exe"
+; The Start Menu entry opens the window; the background app lives in the tray.
+Name: "{group}\Spelly"; Filename: "{app}\spelly-ui.exe"
 Name: "{group}\Uninstall Spelly"; Filename: "{uninstallexe}"
 
 [Registry]
@@ -44,3 +46,4 @@ Filename: "{app}\spelly.exe"; Description: "Start Spelly now"; Flags: nowait pos
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM spelly.exe"; Flags: runhidden; RunOnceId: "StopSpelly"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM spelly-ui.exe"; Flags: runhidden; RunOnceId: "StopSpellyWindow"

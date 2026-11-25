@@ -1,4 +1,4 @@
-use crate::{Session, Spelly};
+use crate::{Correction, Session, Settings, Spelly};
 
 /// What the platform shell tells us happened.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,16 +44,40 @@ pub struct Typist {
     /// so a lowercase first word really is a sentence start.
     anchored: bool,
     pub paused: bool,
+    applied: Vec<Correction>,
 }
 
 impl Typist {
     pub fn new(spelly: Spelly) -> Self {
-        Self { spelly, session: Session::new(), buf: vec![], undo: None, anchored: false, paused: false }
+        Self { spelly, session: Session::new(), buf: vec![], undo: None, anchored: false, paused: false, applied: vec![] }
     }
 
     /// Swap in freshly loaded dictionaries. Keeps what the user has reverted.
     pub fn reload(&mut self, spelly: Spelly) {
         self.spelly = spelly;
+    }
+
+    /// Pause state and strictness from `settings.json`.
+    pub fn apply_settings(&mut self, s: &Settings) {
+        self.paused = s.paused;
+        self.spelly.policy = s.strictness.policy();
+    }
+
+    /// Persisted "that was right" pairs, loaded at startup and on change.
+    pub fn set_rejected(&mut self, pairs: &[(String, String)]) {
+        for (a, b) in pairs {
+            self.session.reject(a, b);
+        }
+    }
+
+    /// Fixes applied since the last call (for the log).
+    pub fn drain_applied(&mut self) -> Vec<Correction> {
+        std::mem::take(&mut self.applied)
+    }
+
+    /// Fixes the user reverted with Backspace since the last call.
+    pub fn drain_rejections(&mut self) -> Vec<(String, String)> {
+        self.session.take_new_rejections()
     }
 
     pub fn on_key(&mut self, key: Key) -> Outcome {
@@ -105,6 +129,7 @@ impl Typist {
                 self.push(c);
                 Outcome::Pass
             } else {
+                self.applied.extend(fixes.iter().cloned());
                 self.undo = Some(Undo { before: self.buf.clone(), after: new.clone() });
                 self.buf = new;
                 Outcome::Swallow(edit)

@@ -7,3 +7,5 @@ description = "Forced-autocorrect engine built on the Harper fork: custom dictio
 
 [dependencies]
 harper-core = { path = "../../harper/harper-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
