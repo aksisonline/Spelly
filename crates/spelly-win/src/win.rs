@@ -5,15 +5,16 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 
 use harper_core::Dialect;
-use spelly_core::{Edit, Key, Outcome, Spelly, Typist};
+use spelly_core::{Edit, Key, Outcome, Pack, Spelly, Typist};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-use crate::packs;
 
 /// Tagged on every key we inject, so our own hook ignores them.
 const MARK: usize = 0x5350_454C; // "SPEL"
@@ -21,24 +22,32 @@ const WM_TRAY: u32 = WM_APP + 1;
 const ID_PAUSE: usize = 1;
 const ID_RELOAD: usize = 2;
 const ID_QUIT: usize = 3;
+const ID_FOLDER: usize = 4;
 
 thread_local! {
     static TYPIST: RefCell<Option<Typist>> = const { RefCell::new(None) };
     static LAST_FG: RefCell<isize> = const { RefCell::new(0) };
 }
 
+/// `%APPDATA%\Spelly\dictionaries`: always writable, survives updates.
 fn dict_dir() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("dictionaries")))
-        .unwrap_or_else(|| PathBuf::from("dictionaries"))
+    std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_default()
+        .join("Spelly")
+        .join("dictionaries")
 }
 
 fn build() -> Spelly {
-    Spelly::new(&packs::load(&dict_dir()), Dialect::Indian)
+    Spelly::new(&Pack::load_dir(&dict_dir()), Dialect::Indian)
 }
 
 pub fn run() {
+    // One copy only: two hooks would both "fix" every word. The installer watches this name too.
+    let _single = unsafe { CreateMutexW(None, false, w!("Local\\SpellyRunning")) };
+    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        return;
+    }
     TYPIST.with(|t| *t.borrow_mut() = Some(Typist::new(build())));
     unsafe {
         let hinst = GetModuleHandleW(None).unwrap_or_default();
@@ -246,7 +255,10 @@ unsafe fn create_tray_window(hinst: windows::Win32::Foundation::HINSTANCE) -> HW
     let mut nid = tray_data(hwnd);
     nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     nid.uCallbackMessage = WM_TRAY;
-    nid.hIcon = unsafe { LoadIconW(None, IDI_APPLICATION) }.unwrap_or_default();
+    // Resource id 1 is the cat embedded by build.rs; fall back to the stock icon.
+    nid.hIcon = unsafe { LoadIconW(Some(hinst), PCWSTR(1 as *const u16)) }
+        .or_else(|_| unsafe { LoadIconW(None, IDI_APPLICATION) })
+        .unwrap_or_default();
     for (i, u) in "Spelly".encode_utf16().enumerate() {
         nid.szTip[i] = u;
     }
@@ -283,6 +295,10 @@ unsafe extern "system" fn tray_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                         }
                     });
                 }
+                ID_FOLDER => {
+                    Pack::seed_dir(&dict_dir());
+                    let _ = std::process::Command::new("explorer").arg(dict_dir()).spawn();
+                }
                 ID_QUIT => unsafe { PostQuitMessage(0) },
                 _ => {}
             }
@@ -298,6 +314,7 @@ unsafe fn show_menu(hwnd: HWND) {
     let pause_flags = if paused { MF_STRING | MF_CHECKED } else { MF_STRING };
     unsafe {
         let _ = AppendMenuW(menu, pause_flags, ID_PAUSE, w!("Pause"));
+        let _ = AppendMenuW(menu, MF_STRING, ID_FOLDER, w!("Open dictionaries folder"));
         let _ = AppendMenuW(menu, MF_STRING, ID_RELOAD, w!("Reload dictionaries"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, w!("Quit"));

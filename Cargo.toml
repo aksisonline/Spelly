@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/spelly-core", "crates/spelly-win"]
+members = ["crates/spelly-core", "crates/spelly-win", "crates/spelly-mac"]
 # The Harper fork lives in ./harper with its own workspace; we depend on it by path.
 exclude = ["harper"]
 

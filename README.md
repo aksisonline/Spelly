@@ -37,12 +37,28 @@ Packs: [`anime.txt`](dictionaries/anime.txt), [`indian-names.txt`](dictionaries/
 | `crates/spelly-core` | The engine: packs, forced fixes, undo. No I/O, runs anywhere |
 | `harper/` | Our Harper fork: dictionary, grammar rules, context ranking |
 | `dictionaries/` | The word packs |
-
 | `crates/spelly-win` | The Windows app: keyboard hook, tray icon, key injection |
+| `crates/spelly-mac` | The macOS app: event tap, menu bar item, key injection |
+| `packaging/` | Windows installer script, macOS bundle script, icon generator |
 
-## Windows
+## Install
 
-Run `spelly.exe`. It sits in the tray (right-click: **Pause**, **Reload dictionaries**, **Quit**). Put a `dictionaries/` folder next to it and every `.txt` in there is loaded; without one, the built-in packs are used.
+| | |
+| :--- | :--- |
+| **Windows** | Run `Spelly-Setup.exe`. No admin needed. Tick "Start Spelly when I sign in" if you want it always on. |
+| **macOS** | Open `Spelly-macOS.dmg`, drag Spelly to Applications, launch it, and allow it under **System Settings → Privacy & Security → Accessibility**. |
+
+Both live in the tray / menu bar: **Pause**, **Open dictionaries folder**, **Reload dictionaries**, **Quit**.
+
+> [!NOTE]
+> Builds are unsigned. If macOS says Spelly is damaged, run `xattr -cr /Applications/Spelly.app`. On Windows, SmartScreen may ask once: **More info → Run anyway**.
+
+## Where the files live
+
+"Open dictionaries folder" creates the folder with the starter packs inside. Edit the `.txt` files (or let an agent), then **Reload dictionaries**.
+
+- Windows: `%APPDATA%\Spelly\dictionaries`
+- macOS: `~/Library/Application Support/Spelly/dictionaries`
 
 It never touches text you didn't just type. Clicking, arrow keys, shortcuts and switching windows all make it forget the line, and password boxes are skipped.
 
@@ -51,8 +67,9 @@ It never touches text you didn't just type. Clicking, arrow keys, shortcuts and 
 - Fixes reach back three words, and context fixes need the next word: `their going` is caught once you type `to `.
 - An unknown capitalized word mid-sentence is assumed to be a name and only highlighted.
 - English only, via Harper.
-- Windows shell is type-checked but not yet run on a real PC. Apps running as administrator can't be typed into by a normal-user Spelly.
-- Tray icon is the stock one until the cat is drawn.
+- The Windows and macOS shells are built by CI but have not yet been tried on real machines. Apps running as administrator can't be typed into by a normal-user Spelly.
+- macOS skips password fields automatically (the OS hides them from Spelly); Windows checks for password boxes.
+- Linux and mobile are not supported yet.
 
 Dev: `cargo test`. Needs current stable Rust.
 
