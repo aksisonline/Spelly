@@ -1,0 +1,27 @@
+# Spelly dictionary pack: one entry per line.
+#   Word                 -> a known word (canonical casing is enforced)
+#   wrong -> Right       -> explicit forced correction
+Naruto
+Uzumaki
+Sasuke
+Uchiha
+Kakashi
+Hatake
+Luffy
+Zoro
+Nami
+Ichigo
+Kurosaki
+Eren
+Yeager
+Mikasa
+Ackerman
+Gojo
+Satoru
+Jujutsu
+Kaisen
+Shingeki
+Boruto
+narto -> Naruto
+sasuki -> Sasuke
+lufy -> Luffy

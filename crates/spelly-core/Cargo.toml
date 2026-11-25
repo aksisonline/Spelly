@@ -1,0 +1,9 @@
+[package]
+name = "spelly-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Forced-autocorrect engine built on the Harper fork: custom dictionary packs, context-aware fixes, revert-on-backspace."
+
+[dependencies]
+harper-core = { path = "../../harper/harper-core" }

@@ -1,0 +1,18 @@
+name: Windows
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --release
+      - run: cargo build --release -p spelly-win
+      - run: Copy-Item -Recurse dictionaries target/release/dictionaries
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spelly-windows-x64
+          path: |
+            target/release/spelly.exe
+            target/release/dictionaries

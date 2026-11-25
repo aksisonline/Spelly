@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/spelly-core", "crates/spelly-win"]
+# The Harper fork lives in ./harper with its own workspace; we depend on it by path.
+exclude = ["harper"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
